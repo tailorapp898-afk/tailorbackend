@@ -28,6 +28,8 @@ function sanitizeObjectIds(obj) {
   return result;
 }
 
+
+
 // 🔹 Route: Sync all local data to MongoDB
 router.post("/syncAllToMongo", authMiddleware, async (req, res) => {
   const data = req.body;
@@ -45,59 +47,90 @@ router.post("/syncAllToMongo", authMiddleware, async (req, res) => {
       const items = data[storeName];
       if (!Array.isArray(items)) continue;
 
-      // 👇👇👇 YAHAN FIX HAI 👇👇👇
+      // -------------------------------------------------
+      // 1. Model Name ka pata lagana
+      // -------------------------------------------------
       let modelName;
-      
-      // Special check for irregular plurals
       if (storeName === "families") {
         modelName = "Family";
       } else {
-        // Baaki sab ke liye 's' hata do (customers -> Customer)
+        // "customers" -> "Customer"
         modelName = storeName.charAt(0).toUpperCase() + storeName.slice(1, -1);
       }
 
       const Model = models[modelName];
       
       if (!Model) {
-        console.log(`⚠️ Model not found for store: ${storeName} (Tried: ${modelName})`);
+        console.log(`⚠️ Model not found for store: ${storeName}`);
         continue;
       }
-      // 👆👆👆 YAHAN FIX KHATAM 👆👆👆
 
+      // -------------------------------------------------
+      // 🔥 STEP 2: DELETE LOGIC (Jo list me nahi hai, wo delete karo)
+      // -------------------------------------------------
+      
+      // Hum 'User' table ko kabhi auto-delete nahi karenge (Safety)
+      if (modelName !== "User") {
+          
+          // Frontend se aaye huye saare VALID _ids ki list nikalo
+          const receivedIds = items
+            .map(item => item._id)
+            .filter(id => id && mongoose.Types.ObjectId.isValid(id));
+
+          // Database Query:
+          // "Is User ke wo saare records delete kardo jo 'receivedIds' list mein NAHI hain"
+          await Model.deleteMany({ 
+              userId: req.user._id, 
+              _id: { $nin: receivedIds } // $nin = Not In
+          }).session(session);
+      }
+
+      // -------------------------------------------------
+      // 3. UPDATE / INSERT LOGIC (Jo list me hai, use save karo)
+      // -------------------------------------------------
       for (const item of items) {
         const { _id, ...rest } = item;
         const cleanData = sanitizeObjectIds(rest);
 
+        // Password handling (Sirf User model ke liye)
         if (modelName === "User" && cleanData.password) {
-          const salt = await bcrypt.genSalt(10);
-          cleanData.password = await bcrypt.hash(cleanData.password, salt);
+           if(cleanData.password.length < 20) { 
+               const salt = await bcrypt.genSalt(10);
+               cleanData.password = await bcrypt.hash(cleanData.password, salt);
+           }
         }
 
+        // Har item ke sath UserId zaroor lagana (Siwaye User table ke)
         if (modelName !== "User") cleanData.userId = req.user._id;
 
+        // Filter banana (kaunsa item update karna hai?)
         let filter = {};
         if (_id && mongoose.Types.ObjectId.isValid(_id)) {
           filter = { _id };
         } else if (item.localId) {
           filter = { localId: item.localId };
+          // localId ko save bhi kar lo taaki future me match ho sake
           cleanData.localId = item.localId;
         } else if (modelName === "User" && item.email) {
           filter = { email: item.email };
         } else {
+          // Agar kuch match nahi hua to naya ID bana do
           filter = { _id: new mongoose.Types.ObjectId() };
         }
 
         try {
+          // Update karo, agar nahi hai to Naya bana do (upsert: true)
           await Model.updateOne(filter, { $set: cleanData }, { upsert: true, session });
         } catch (err) {
-          console.warn(`⚠️ Error saving ${modelName}:`, err.message);
+          console.warn(`⚠️ Error saving ${modelName} item:`, err.message);
         }
       }
     }
 
     await session.commitTransaction();
     committed = true;
-    res.status(200).json({ message: "✅ Sync successful" });
+    res.status(200).json({ message: "✅ Sync Successful (Updated & Deleted)" });
+
   } catch (error) {
     if (!committed) await session.abortTransaction();
     console.error("❌ Sync failed:", error);
@@ -106,6 +139,7 @@ router.post("/syncAllToMongo", authMiddleware, async (req, res) => {
     session.endSession();
   }
 });
+
 
 router.get("/loadAllFromMongo", authMiddleware, async (req, res) => {
   try {
