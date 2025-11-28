@@ -1,3 +1,4 @@
+
 import dotenv from "dotenv";
 dotenv.config();
 
@@ -8,6 +9,7 @@ import mongoose from "mongoose";
 // Import routes
 import syncRoutes from "./routes/sync.js";
 import authRoutes from "./routes/authRoutes.js";
+import adminRoutes from "./routes/admin.js";
 
 const app = express();
 
@@ -24,6 +26,7 @@ app.use((req, res, next) => {
 // Routes
 app.use("/api/sync", syncRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/admin", adminRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
@@ -52,7 +55,7 @@ const connectDB = async () => {
 
 // ✅ FIX: Server Start Logic
 // Server tab hi start hoga jab DB connect ho jayega
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 
 connectDB().then(() => {
   app.listen(PORT, () => {

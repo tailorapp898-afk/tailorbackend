@@ -6,6 +6,7 @@ import bcrypt from "bcryptjs"
 const router = express.Router()
 
 router.post("/login", async (req, res) => {
+  
   try {
     const { email, password } = req.body;
 
@@ -40,6 +41,7 @@ router.post("/login", async (req, res) => {
         email: user.email,
         shop_name: user.shop_name,
         shop_address: user.shop_address,
+        role: user.role, // Role bhi bhejein
       },
     });
   } catch (err) {
@@ -47,6 +49,8 @@ router.post("/login", async (req, res) => {
     res.status(500).json({ error: "Internal server error" });
   }
 });
+
+
 router.post("/logout", (req, res) => {
   try {
     // no token invalidation needed (non-expiring token)
@@ -55,52 +59,4 @@ router.post("/logout", (req, res) => {
     res.status(500).json({ error: "Logout failed" })
   }
 })
-
-// 🔹 Register Route (Online Only)
-router.post("/register", async (req, res) => {
-  try {
-    const { name, email, password, shop_name } = req.body;
-
-    // 1. Check agar user pehle se exist karta hai (Unique Email Check)
-    const existingUser = await User.findOne({ email });
-    if (existingUser) {
-      return res.status(400).json({ message: "User with this email already exists" });
-    }
-
-    // 2. Password Hash karein (Security)
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    // 3. Naya User create karein
-    const newUser = new User({
-      name,
-      email,
-      password: hashedPassword,
-      shop_name,
-    });
-
-    await newUser.save();
-
-    // 4. JWT Token Generate karein
-    const token = jwt.sign({ id: newUser._id }, process.env.JWT_SECRET, {
-      expiresIn: "30d",
-    });
-
-    // 5. Response bhejein (Password wapas nahi bhejna chahiye)
-    res.status(201).json({
-      token,
-      user: {
-        _id: newUser._id,
-        name: newUser.name,
-        email: newUser.email,
-        shop_name: newUser.shop_name,
-      },
-    });
-
-  } catch (error) {
-    console.error("Registration Error:", error);
-    res.status(500).json({ message: "Server error during registration" });
-  }
-});
-
 export default router

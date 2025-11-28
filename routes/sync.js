@@ -28,8 +28,7 @@ function sanitizeObjectIds(obj) {
   return result;
 }
 
-
-
+// 🔹 Route: Sync all local data to MongoDB
 // 🔹 Route: Sync all local data to MongoDB
 router.post("/syncAllToMongo", authMiddleware, async (req, res) => {
   const data = req.body;
@@ -59,7 +58,7 @@ router.post("/syncAllToMongo", authMiddleware, async (req, res) => {
       }
 
       const Model = models[modelName];
-      
+
       if (!Model) {
         console.log(`⚠️ Model not found for store: ${storeName}`);
         continue;
@@ -68,21 +67,21 @@ router.post("/syncAllToMongo", authMiddleware, async (req, res) => {
       // -------------------------------------------------
       // 🔥 STEP 2: DELETE LOGIC (Jo list me nahi hai, wo delete karo)
       // -------------------------------------------------
-      
+
       // Hum 'User' table ko kabhi auto-delete nahi karenge (Safety)
       if (modelName !== "User") {
-          
-          // Frontend se aaye huye saare VALID _ids ki list nikalo
-          const receivedIds = items
-            .map(item => item._id)
-            .filter(id => id && mongoose.Types.ObjectId.isValid(id));
 
-          // Database Query:
-          // "Is User ke wo saare records delete kardo jo 'receivedIds' list mein NAHI hain"
-          await Model.deleteMany({ 
-              userId: req.user._id, 
-              _id: { $nin: receivedIds } // $nin = Not In
-          }).session(session);
+        // Frontend se aaye huye saare VALID _ids ki list nikalo
+        const receivedIds = items
+          .map(item => item._id)
+          .filter(id => id && mongoose.Types.ObjectId.isValid(id));
+
+        // Database Query:
+        // "Is User ke wo saare records delete kardo jo 'receivedIds' list mein NAHI hain"
+        await Model.deleteMany({
+          userId: req.user._id,
+          _id: { $nin: receivedIds } // $nin = Not In
+        }).session(session);
       }
 
       // -------------------------------------------------
@@ -94,10 +93,10 @@ router.post("/syncAllToMongo", authMiddleware, async (req, res) => {
 
         // Password handling (Sirf User model ke liye)
         if (modelName === "User" && cleanData.password) {
-           if(cleanData.password.length < 20) { 
-               const salt = await bcrypt.genSalt(10);
-               cleanData.password = await bcrypt.hash(cleanData.password, salt);
-           }
+          if (cleanData.password.length < 20) {
+            const salt = await bcrypt.genSalt(10);
+            cleanData.password = await bcrypt.hash(cleanData.password, salt);
+          }
         }
 
         // Har item ke sath UserId zaroor lagana (Siwaye User table ke)
@@ -139,14 +138,12 @@ router.post("/syncAllToMongo", authMiddleware, async (req, res) => {
     session.endSession();
   }
 });
-
-
 router.get("/loadAllFromMongo", authMiddleware, async (req, res) => {
   try {
     const result = {};
     for (const modelName in models) {
       const Model = models[modelName];
-      
+
       // Correct plural mapping
       let storeName;
       if (modelName === "Family") storeName = "families";
@@ -156,7 +153,7 @@ router.get("/loadAllFromMongo", authMiddleware, async (req, res) => {
       const documents = await Model.find(query).lean();
       result[storeName] = documents;
     }
-    
+
     res.status(200).json({ message: "✅ User-specific data loaded successfully", data: result });
   } catch (error) {
     console.error("❌ Load failed:", error);
